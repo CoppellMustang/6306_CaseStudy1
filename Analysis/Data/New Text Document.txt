@@ -1,0 +1,23 @@
+1. The format of the dataset – need to know what type of file it is.
+2. The contents of the file – need to clean the data to ensure it’s clean and in numeric for our objective.
+Task list with Prioritization (due by 6/22 4PM PDT):
+1. Project Introduction (P3)
+2. Audience (P1)
+3. Objective (P0)
+4. R Code (P2)
+a. Download
+b. Cleanup/Tidying
+c. Merge (any efficient algorithm here?)
+d. Sort (any efficient algorithm here?)
+e. Average (any theories could be used here?)
+f. Plot
+g. Income vs. GDP (any theories could be used here?)
+5. Unit Testing R Code (P2)
+6. Implementation and Design Objective checks (code review) (P2)
+7. R Markdown file (P3)
+8. Explanation/Design of the project (P1)
+9. Functional explanation covering item #2 above (R code) (P2)
+10. Conclusion/Findings (P2)
+11. References (P4)
+12. Final Project document with TOC, Tables, and References (P5)
+13. Github upload (P6)

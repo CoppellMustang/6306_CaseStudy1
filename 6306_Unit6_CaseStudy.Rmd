@@ -1,0 +1,244 @@
+---
+title: "Analysis of world economies and GDP rankings"
+author: "Manjula Kottegoda"
+date: "June 20, 2016"
+output: 
+  html_document:
+    keep_md: true
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+###Abstract:  
+This Article investigates data^1^ published by the World Bank to look at relationships between world’s nations on GDP^2^ rankings and income groups based on OECD^3^ membership and provide insight into the wealth distribution across the world.
+
+
+```{r include=FALSE}
+require(ggplot2)
+require(rworldmap)
+require(knitr)
+require(rworldmap)
+#library(knitr,quietly = T)
+```
+
+
+
+Firstly we will examine the data itself and do some analysis to make sure the data is of good quality for this study. 
+
+```{r}
+# -------------------------------------------------------------------------------
+# 1. First we load the Education statis datafile in to a dataframe
+# 2. Do a quick view in to the Education data frame
+# 3. Load the Ranking datafile to anoter dataframe
+# 4. Do a quick view in to the Ranking data frame
+# -------------------------------------------------------------------------------
+EduRaw <- read.csv("Analysis/Data/EDSTATS_Country.csv",blank.lines.skip=TRUE,colClasses="character")
+str(EduRaw)
+
+GDPRaw <- read.csv("Analysis/Data/GDP.csv",blank.lines.skip=TRUE,colClasses="character")
+str(GDPRaw)
+```
+
+Initial view of the data shows that some cleanup is necessary for the analysis to proceed. Hence we perform the following steps to clean the GDP ranking data. First remove unnecessary columns & rows then give the resulting data frame meaningful column names. After which we will take a quick look at the cleaned data to confirm the changes.
+
+```{r }
+# Note: The Ranking data will be manipulated using a copy (GDPTemp) of the origibnal data 
+#--------------------------------------------------------------
+# Clean up columns in two steps
+#--------------------------------------------------------------
+# 1. Drop empty columns
+GDPTemp <- GDPRaw[!sapply(GDPRaw, function(x) all(x == ""))]
+# 2. Drop non empty but Junk column number #5
+GDPTemp <- GDPTemp[,-c(5)]
+
+
+#--------------------------------------------------------------
+# Clean up Rows in two steps
+#--------------------------------------------------------------
+# 1.conditianally remove rows based on vital elements of data not being populated
+GDPTemp<-GDPTemp[!(GDPTemp$X=="" & GDPTemp$X.2==""),]
+# 2. Clean up residual titles segments 
+GDPTemp<-GDPTemp[!(GDPTemp[2] == "Ranking"),]
+
+#--------------------------------------------------------------
+#setup new meaningful comumn headers
+#--------------------------------------------------------------
+names(GDPTemp) <- c("CountryCode","GDPrank","Economy","GDPmillionsUSD")
+
+#head(GDPTemp, 5) #look at the first 5 rows
+str(GDPTemp)
+```
+
+As apparent the GDP (given in millions USD) and the GDP Rank needs to be converted to integers.
+
+```{r}
+#-------------------------------------------------------------
+# Perform data conversions
+#-------------------------------------------------------------
+# 1. set Rank as Numeric
+GDPTemp$GDPrank <- as.integer(GDPTemp$GDPrank)
+
+# 2. set GDPamount-Column Name GDPmillionsUSD as Numeric
+GDPTemp$GDPmillionsUSD <- gsub(",", "", GDPTemp$GDPmillionsUSD) # weed out commas first
+GDPTemp$GDPmillionsUSD <- suppressWarnings(as.integer(GDPTemp$GDPmillionsUSD))
+
+str(GDPTemp) # taking another quick look to confirm GDPmillionsUSD and GDPrank data types
+sum(is.na(GDPTemp$GDPrank)) # number of NA values on Rankings column
+sum(is.na(GDPTemp$GDPmillionsUSD)) # number of NA values on GDP value column
+```
+
+Now we can see that there are `r sum(is.na(GDPTemp$GDPrank))` rows with no rankings Of which `r sum(is.na(GDPTemp$GDPmillionsUSD))` rows are missing GDP values as well. When the GDP data is missing the ranking by default becomes empty. The list of countries with missing GDP data (GDPmillionsUSD) that will be  omitted from this study is listed below for informational purposes.
+
+```{r}
+kable(GDPTemp[(is.na(GDPTemp$GDPmillionsUSD)),], padding=0)
+```
+
+After removing the data with empty rankings we will create a new dataframe that will contain all countries with ranking and GDP values populated.
+
+
+```{r}
+#---------------------------------------------------------------
+# Three data frames are defined in code below - Creating the three dataframes is for future analysis 
+#  1. Regional and grouped data  (Contain world and Income segment data) in GDP_Region
+#  2. All rows with a csingle ounntry or teritory in GDP_nonRegion
+#  3. Countries with GDP data popalated in GDP_nonRegion_Datacomplete
+#---------------------------------------------------------------
+# 1. Get Non-Country subset (World, South Asia etc)
+GDP_Region<-GDPTemp[is.na(GDPTemp$GDPrank) & (!is.na(GDPTemp$GDPmillionsUSD)),]
+
+
+#2. Build  subset of rows that do not have regions (there are countries and teritories i.e. American Samoa here)
+GDP_nonRegion <- GDPTemp[!GDPTemp$CountryCode %in% GDP_Region$CountryCode,]
+
+
+#3 Build Country list with data populated in GDP rank and GDP Millions
+GDP_nonRegion_Datacomplete <- GDP_nonRegion[!is.na(GDP_nonRegion$GDPrank),]
+
+```
+
+A quick glance at the data sorted by lowest rank (poorest) to highest (wealthiest) for the 15 poorest economies show a tie for 12^th^. Therefore there is no 13^th^ place as there is a tie for 12^th^ between Grenada and St.Kitts & Nevis.
+
+```{r}
+head(GDP_nonRegion_Datacomplete[order(rev(GDP_nonRegion_Datacomplete$GDPrank)),], 15)
+```
+
+Now the data from the GDP Ranking data is merged with the Education data.
+
+```{r}
+#---------------------------------------------------------------------------
+#  The clean data rich dafatrame GDP_nonRegion_Datacomplete is now merged with EduRaw dataframe 
+#  matched by CountryCode 
+#---------------------------------------------------------------------------
+TempMerge <-  merge(GDP_nonRegion_Datacomplete,EduRaw,by="CountryCode")
+nrow(TempMerge)
+```
+
+
+As can be seen `r nrow(TempMerge)` countries IDs matched in the merge. Now we look at the average GDP rankings for the Income Groups.
+
+```{r}
+#-----------------------------------------------------------------------------------------
+# Code below will apply the average function with the appropriate Income group filter
+#-----------------------------------------------------------------------------------------
+#Average GDP Rank for the "High income: OECD" and "High income: nonOECD" groups? 
+RankAvgByIncomeGroup<-tapply(TempMerge$GDPrank,TempMerge$Income.Group,mean)
+RankAvgByIncomeGroup
+```
+
+We can observe that GDP rankings for the Income group: "High income: OECD"^4^ is `r round(RankAvgByIncomeGroup[1])` and Income group: "High income: nonOECD"^5^ is `r round(RankAvgByIncomeGroup[2])`. OECD membership, which fosters structure and economic corporation  between nations, seems to have a noticeable impact to a country's GDP ranking.
+
+
+Now we look at GDP ranking visually in an all in one graph. While the graph is busy it gives an idea on disparities, outliers and a general view of overall global wealth distribution. The outlier in the far left is the United States.
+
+
+```{r fig.width=16, fig.height=8}
+GDPCountryPlot <- data.frame(TempMerge[,c("GDPmillionsUSD","Economy","Income.Group")])
+options(scipen=10000)
+g<-ggplot(GDPCountryPlot, aes(x= Economy,y=GDPmillionsUSD,  colour = factor(Income.Group)))+geom_point()
+g<-g+xlab("Country") + ylab("GDP in Millions usd")+ggtitle('GDP for all countries')
+g<-g+theme(axis.text.x=element_text(angle=90, hjust=1,vjust=0.2),axis.text=element_text(size=7),legend.position = "bottom",legend.background = element_rect(colour = "black"),legend.text = element_text(size = 15))
+g
+```
+
+We will now look at the GDP by Income Groups to show distributions within groups.
+
+```{r}
+# Code generating the additional plots are in this scrit file ggplots_code.R
+source('Analysis/ggplots_code.R') 
+
+p1 # show plot 1 - Low income group
+p2 # show plot 2 - Low middle income group
+p3 # show plot 3 - Upper middle income group
+p4 # show plot 4 - High income non OECD income group
+p5 # show plot 5 - High Income OECD income group
+```
+ 
+In the plots above it's important to pay attention to the scale on the Y-axis. For readability the scale is not kept uniform between the plots. Another point of interest is how China and India, while having high GDPs, fall into the Low middle income category because of very high populations.
+
+
+We now look at a different view of the GDP data by geographically mapping the different groups. Colors within a single map shows the GDP as red for higher-end and yellow for lower-end values in the group.
+
+```{r}
+#Note: Code generating the world maps are located in file Analysis/mapplots.R
+```
+
+```{r echo=FALSE, comment=NULL, message=FALSE, warning=FALSE, results='hide'}
+# Code generating the additional morld maps are in this scrit file mapplots.R
+source('Analysis/mapplots.R') 
+```
+
+We now divide the GDP ranking into 5 separate quantile groups. 
+
+```{r}
+#---------------------------------------------------------------------------------------
+# Cut the GDP ranking into 5 separate quantile groups. 
+#---------------------------------------------------------------------------------------
+
+Rank_IncomeGrp <- data.frame(TempMerge[,c("GDPrank","Income.Group")])
+quantileDF <- quantile(TempMerge$GDPrank,probs = c(0,0.2,0.4,0.6,0.8,1))
+head(quantileDF)
+
+```
+
+And make a table versus Income Group.
+
+
+```{r}
+# ---------------------------------------------------------------------------------------
+# Make a table versus Income.Group. 
+#---------------------------------------------------------------------------------------
+
+TempMerge$Rankquantile <- cut(TempMerge$GDPrank, breaks = quantileDF)
+T1 <- table(TempMerge$Rankquantile, TempMerge$Income.Group)
+T1
+```
+
+
+As can be seen `r T1[1,"Lower middle income"]` countries are rated lower middle income while being among the 38 nations with the highest GDP. This shows that the GDP ranking plays a lesser role in a country’s income grouping while its population plays greater role. 
+
+United States is by far the wealthiest country and all other advanced nations enjoy a high incomes. On the opposite side of the spectrum there seems to be a high concentration of central African countries in the lowest bracket with western sub-saharan countries faring the worst. 
+
+--------------------------------------------------------------------------------
+
+data^1^ – 
+Data used in the analysis were gathered from the following sources
+    <http://data.worldbank.org/data-catalog/GDP-ranking-table>
+    <http://data.worldbank.org/data-catalog/ed-stats>
+
+
+GDP^2^ : GDP is the sum of gross value added by all resident producers in the economy plus any product taxes and minus any subsidies not included in the value of the products. It is calculated without making deductions for depreciation of fabricated assets or for depletion and degradation of natural resources. Data are in current U.S. dollars.
+
+
+OECD^3^ -  The Organization for Economic Co-operation and Development   
+see <http://www.oecd.org/about>
+
+
+High income: OECD^4^ - see <http://data.worldbank.org/income-level/OEC>
+
+High income: nonOECD^5^ - see <http://data.worldbank.org/income-level/NOC>
+
